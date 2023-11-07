@@ -1,0 +1,328 @@
+---
+title: "Midterm615"
+author: "Chang Shi"
+format: html
+editor: visual
+---
+
+## Data Cleaning
+
+Floods are one of the most destructive natural disasters. In the United States, natural disaster recovery is managed by the Federal Emergency Management Agency (FEMA). My task will be to analyze the data and find out the harm of flood to the city. I need to do Data Cleaning on 4 data sets. The sources of these 4 data sets are NOAA data for 2020 and 2021 and FEMA data for all years respectively. I will be extracting flood Data for 2020 and 2021, which will be the main work of Data Cleaning.
+
+```{r}
+library(dplyr)
+
+# FEMA data
+disaster_declarations <- read.csv("DisasterDeclarationsSummaries.csv")
+fema_web_disasters <- read.csv("FemaWebDisasterSummaries.csv")
+
+
+filtered_disaster_declarations <- filter(disaster_declarations, incidentType == 'Flood')
+
+merged_data <- inner_join(filtered_disaster_declarations, fema_web_disasters, by = "disasterNumber")
+
+```
+
+```{r}
+library(tidyverse)
+
+#NOAA data
+
+data_2020 <- read.csv("StormEvents_details-ftp_v1.0_d2020_c20230927.csv")
+data_2021 <- read.csv("StormEvents_details-ftp_v1.0_d2021_c20231017.csv")
+
+flood_2020 <- data_2020 %>% filter(EVENT_TYPE == "Flood")
+flood_2021 <- data_2021 %>% filter(EVENT_TYPE == "Flood")
+
+combined_data <- bind_rows(data_2020, data_2021)
+
+replace_k_m <- function(value) {
+  if (grepl("K", value)) {
+    return(as.numeric(gsub("K", "", value)) * 1e3)
+  } else if (grepl("M", value)) {
+    return(as.numeric(gsub("M", "", value)) * 1e6)
+  } else {
+    return(as.numeric(value))
+  }
+}
+
+combined_data$DAMAGE_PROPERTY <- sapply(combined_data$DAMAGE_PROPERTY, replace_k_m)
+combined_data$DAMAGE_CROPS <- sapply(combined_data$DAMAGE_CROPS, replace_k_m)
+```
+
+## Data visualization
+
+When I've sorted out the data, I'm going to show you what the meaning is behind the flood-related data. I need to analyze the harm caused by floods to cities, so I will analyze the number of floods in each state in the United States and the economic losses caused by floods.
+
+I'm going to show you how each state has been affected by the floods in descending order. There are two different sets of data, NOAA data and FEMA data. My Data Visualization will show the mission from two different perspectives.
+
+Here is a full year of data from FEMA data:
+
+```{r}
+library(ggplot2)
+# 
+# Count the number of flood incidents for each state
+state_counts <- merged_data %>% 
+  group_by(state) %>% 
+  summarise(count = n()) %>% 
+  arrange(desc(count))
+
+# Plot
+ggplot(state_counts, aes(x = reorder(state, -count), y = count)) + 
+  geom_bar(stat = "identity", fill = "steelblue") +
+  theme_minimal() +
+  labs(title = "Number of Flood Incidents by State", 
+       x = "State", 
+       y = "Number of Incidents") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+```{r}
+# Get the state with the most flood incidents
+most_affected <- state_counts[1,]
+print(most_affected)
+
+```
+
+```{r}
+merged_data$totalEconomicLoss <- rowSums(merged_data[,c('totalAmountIhpApproved', 'totalAmountHaApproved', 
+                                                       'totalAmountOnaApproved', 'totalObligatedAmountPa', 
+                                                       'totalObligatedAmountCatAb', 'totalObligatedAmountCatC2g', 
+                                                       'totalObligatedAmountHmgp')], na.rm = TRUE)
+
+state_loss <- merged_data %>% 
+  group_by(state) %>% 
+  summarise(TotalLoss = sum(totalEconomicLoss, na.rm = TRUE)) %>% 
+  arrange(desc(TotalLoss))
+
+ggplot(state_loss, aes(x = reorder(state, -TotalLoss), y = TotalLoss)) +
+  geom_bar(stat="identity", fill="steelblue") +
+  theme_minimal() +
+  labs(title="Total Economic Loss by State Due to Floods",
+       x="State", y="Total Economic Loss") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+Here is NOAA data:
+
+```{r}
+flood_by_state <- combined_data %>%
+  filter(EVENT_TYPE == "Flood") %>%
+  group_by(STATE) %>%
+  summarise(Number_of_Flood_Events = n()) %>%
+  arrange(-Number_of_Flood_Events)
+
+ggplot(flood_by_state, aes(x = reorder(STATE, -Number_of_Flood_Events), y = Number_of_Flood_Events, fill = Number_of_Flood_Events)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Number of Flood Events by State", x = "State", y = "Number of Flood Events") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+```
+
+```{r}
+# Apply the function to the columns related to money
+combined_data$DAMAGE_PROPERTY <- sapply(combined_data$DAMAGE_PROPERTY, replace_k_m)
+combined_data$DAMAGE_CROPS <- sapply(combined_data$DAMAGE_CROPS, replace_k_m)
+
+# Filter out flood events and calculate total economic loss by state
+economic_loss_by_state <- combined_data %>%
+  filter(EVENT_TYPE == "Flood") %>%
+  group_by(STATE) %>%
+  summarise(Total_Economic_Loss = sum(DAMAGE_PROPERTY, na.rm=TRUE) + sum(DAMAGE_CROPS, na.rm=TRUE)) %>%
+  arrange(-Total_Economic_Loss)
+
+# Plotting
+ggplot(economic_loss_by_state, aes(x = reorder(STATE, -Total_Economic_Loss), y = Total_Economic_Loss)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  labs(title = "Total Economic Loss by State Due to Floods", x = "State", y = "Total Economic Loss") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+Here is 2020 and 2021 year from FEMA data:
+
+```{r}
+disaster_declarations <- read.csv("DisasterDeclarationsSummaries.csv")
+fema_web_disasters <- read.csv("FemaWebDisasterSummaries.csv")
+# Convert the 'declarationDate' column to Date format in R
+disaster_declarations$declarationDate <- as.Date(disaster_declarations$declarationDate)
+
+# Filter the data for the years 2020 and 2021
+filtered_dds <- disaster_declarations %>% filter(format(declarationDate, "%Y") %in% c("2020", "2021"))
+
+# Merge the datasets based on the 'disasterNumber' column
+merged_data_r <- merge(filtered_dds, fema_web_disasters, by="disasterNumber")
+```
+
+```{r}
+#library("ggplot2")
+
+merged_data_r $totalEconomicLoss <- rowSums(merged_data_r [,c('totalAmountIhpApproved', 'totalAmountHaApproved', 
+                                                       'totalAmountOnaApproved', 'totalObligatedAmountPa', 
+                                                       'totalObligatedAmountCatAb', 'totalObligatedAmountCatC2g', 
+                                                       'totalObligatedAmountHmgp')], na.rm = TRUE)
+
+state_loss <- merged_data_r  %>% 
+  group_by(state) %>% 
+  summarise(TotalLoss = sum(totalEconomicLoss, na.rm = TRUE)) %>% 
+  arrange(desc(TotalLoss))
+
+
+ggplot(state_loss, aes(x = reorder(state, -TotalLoss), y = TotalLoss)) +
+  geom_bar(stat="identity", fill="steelblue") +
+  theme_minimal() +
+  labs(title="Total Economic Loss by State Due to Floods",
+       x="State", y="Total Economic Loss") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+## EDA(Exploratory Data Analysis)
+
+Through data visualization, I came to some conclusions in the FEMA and NOAA data. Even though the years are the same, the states with the worst losses are not the same. I think this is because the two data for the loss of the standard is not consistent.
+
+I created a map to try to see if the flooding was more damaging inland because it was closer to the sea.
+
+I hope this can be used as a breakthrough to analyze that important economic cities will bring greater economic losses than coastal areas. In this regard, it is judged what economy they use as a criterion.
+
+```{r}
+library(sf)
+library(tigris)
+library(ggplot2)
+library(viridis)
+library(tidyverse)
+library(tools)
+
+data_2020 <- read.csv("StormEvents_details-ftp_v1.0_d2020_c20230927.csv")
+data_2021 <- read.csv("StormEvents_details-ftp_v1.0_d2021_c20231017.csv")
+
+flood_2020 <- data_2020 %>% filter(EVENT_TYPE == "Flood")
+flood_2021 <- data_2021 %>% filter(EVENT_TYPE == "Flood")
+
+combined_data <- bind_rows(data_2020, data_2021)
+
+replace_k_m <- function(value) {
+  if (grepl("K", value)) {
+    return(as.numeric(gsub("K", "", value)) * 1e3)
+  } else if (grepl("M", value)) {
+    return(as.numeric(gsub("M", "", value)) * 1e6)
+  } else {
+    return(as.numeric(value))
+  }
+}
+
+combined_data$DAMAGE_PROPERTY <- sapply(combined_data$DAMAGE_PROPERTY, replace_k_m, USE.NAMES = FALSE)
+combined_data$DAMAGE_CROPS <- sapply(combined_data$DAMAGE_CROPS, replace_k_m, USE.NAMES = FALSE)
+
+# Sum property and crop damage
+combined_data <- combined_data %>%
+  group_by(STATE) %>%
+  summarise(total_damage = sum(DAMAGE_PROPERTY + DAMAGE_CROPS, na.rm = TRUE))
+
+combined_data <- combined_data %>%
+  mutate(state = toTitleCase(tolower(STATE)))
+
+label_formatter <- function(x) {
+  sapply(x, function(x) {
+    if (is.na(x)) {
+      return(NA)
+    } else if (x >= 1e6) {
+      paste0(formatC(x / 1e6, format = "f", digits = 1), "M")
+    } else if (x >= 1e3) {
+      paste0(formatC(x / 1e3, format = "f", digits = 1), "K")
+    } else {
+      as.character(x)
+    }
+  })
+}
+
+# Get the US states shapefile
+states_sf <- st_as_sf(tigris::states())
+
+# Ensure the 'NAME' column is a character type for the join
+states_sf$NAME <- as.character(states_sf$NAME)
+
+# Join the economic damage data with the states shapefile
+map_data <- left_join(states_sf, combined_data, by = c("NAME" = "state"))
+
+# Create the map showing economic damage
+ggplot(map_data) +
+  geom_sf(aes(fill = total_damage), color = "white", size = 0.25) +
+  scale_fill_viridis_c(
+    name = "Total Economic Damage",
+    trans = "log",  # Logarithmic scale for better color variation
+    labels = label_formatter  # Use custom formatter for labels
+  ) +
+  theme_minimal() +
+  geom_sf_text(aes(label = label_formatter(total_damage)), color = "white", size = 3, check_overlap = TRUE) +
+  labs(title = "Total Economic Damage by State in the United States (Years 2020 & 2021)") +
+  theme(
+    legend.position = "bottom",
+    axis.text.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks = element_blank(),
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    legend.text = element_text(size = 10)
+  ) +
+  coord_sf(xlim = c(-125, -66), ylim = c(25, 50), expand = FALSE)
+```
+
+```{r}
+state_loss$state <- toTitleCase(tolower(state_loss$state))
+
+
+state_name_mapping <- setNames(
+  c("ALABAMA", "ALASKA", "ARIZONA", "ARKANSAS", "CALIFORNIA", "COLORADO", "CONNECTICUT", "DELAWARE", "DISTRICT OF COLUMBIA", 
+    "FLORIDA", "GEORGIA", "HAWAII", "IDAHO", "ILLINOIS", "INDIANA", "IOWA", "KANSAS", "KENTUCKY", "LOUISIANA", "MAINE", 
+    "MARYLAND", "MASSACHUSETTS", "MICHIGAN", "MINNESOTA", "MISSISSIPPI", "MISSOURI", "MONTANA", "NEBRASKA", "NEVADA", 
+    "NEW HAMPSHIRE", "NEW JERSEY", "NEW MEXICO", "NEW YORK", "NORTH CAROLINA", "NORTH DAKOTA", "OHIO", "OKLAHOMA", "OREGON", 
+    "PENNSYLVANIA", "RHODE ISLAND", "SOUTH CAROLINA", "SOUTH DAKOTA", "TENNESSEE", "TEXAS", "UTAH", "VERMONT", "VIRGINIA", 
+    "WASHINGTON", "WEST VIRGINIA", "WISCONSIN", "WYOMING", "PUERTO RICO", "GUAM", "NORTHERN MARIANA ISLANDS", "AMERICAN SAMOA", 
+    "VIRGIN ISLANDS"),
+  c("AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "DC", "FL", "GA", "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", 
+    "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", 
+    "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY", "PR", "GU", "MP", "AS", "VI")
+)
+
+# Get the US states shapefile
+states_sf <- st_as_sf(tigris::states())
+
+# Ensure the 'NAME' column is a character type for the join
+states_sf$NAME <- as.character(states_sf$NAME)
+
+# Join the economic damage data with the states shapefile
+map_data <- left_join(states_sf, state_loss, by = c("NAME" = "state"))
+
+
+# Apply the label_formatter to the TotalLoss column
+map_data$total_damage_label <- label_formatter(map_data$TotalLoss)
+
+# Create the map showing economic damage
+ggplot(map_data) +
+  geom_sf(aes(fill = TotalLoss), color = "white", size = 0.25) +
+  scale_fill_viridis_c(
+    name = "Total Economic Damage",
+    trans = "log",  # Logarithmic scale for better color variation
+    labels = label_formatter  # Use custom formatter for labels
+  ) +
+  theme_minimal() +
+  geom_sf_text(aes(label = total_damage_label), color = "white", size = 3, check_overlap = TRUE) +
+  labs(title = "Total Economic Damage by State in the United States (Years 2020 & 2021)") +
+  theme(
+    legend.position = "bottom",
+    axis.text.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks = element_blank(),
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    legend.text = element_text(size = 10)
+  ) +
+  coord_sf(xlim = c(-125, -66), ylim = c(25, 50), expand = FALSE)
+```
+
+```         
+```
+
+In general, coastal areas are more dangerous than inland areas. Although some economic cities, such as New York, also had high economic losses, the economic losses of coastal cities were much higher than those of inland areas.
